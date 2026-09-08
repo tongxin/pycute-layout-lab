@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Interactive visual explanations of CuTe layout concepts and algorithms: shape, stride, coalesce, greatest common domain, and the COPY pipeline.">
+  <title>CuTe Layout Lab</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="site-header">
+    <a class="brand" href="#top" aria-label="CuTe Layout Lab home">
+      <span class="brand-mark" aria-hidden="true">∎</span>
+      <span>CuTe Layout Lab</span>
+    </a>
+    <nav aria-label="Page sections">
+      <a href="#concept">Concept</a>
+      <a href="#coalesce">Coalesce</a>
+      <a href="#gcd">Common domain</a>
+      <a href="#copy">COPY</a>
+    </nav>
+  </header>
+
+  <main id="main">
+    <section class="hero" id="top">
+      <p class="eyebrow">CuTe layout algebra</p>
+      <h1>See how shape and stride become memory.</h1>
+      <p class="hero-copy">
+        A CuTe layout is a map from logical coordinates to physical offsets.
+        Change the shape or stride and watch the colors tell you which elements
+        are close in memory. The later sections turn that picture into the
+        algorithms behind coalesce, greatest common domain, and COPY.
+      </p>
+      <div class="hero-legend" aria-label="Color legend">
+        <span>offset low</span>
+        <span class="legend-bar" aria-hidden="true"></span>
+        <span>offset high</span>
+      </div>
+    </section>
+
+    <section class="section" id="concept">
+      <div class="section-head">
+        <p class="eyebrow">01 · General concept</p>
+        <h2>A layout is a map from coordinates to offsets.</h2>
+        <p>
+          The grid below is logical: row <code>i</code>, column <code>j</code>.
+          The color and the number inside each cell are the physical offset
+          <code>i·d₀ + j·d₁</code>. Hover a cell to see which memory position
+          it shares with another coordinate.
+        </p>
+      </div>
+
+      <div class="lab-grid">
+        <form class="panel controls" id="concept-controls">
+          <h3>Layout inputs</h3>
+          <label class="field">
+            <span>Shape</span>
+            <input id="concept-shape" name="concept-shape" value="4,3" inputmode="numeric" autocomplete="off">
+          </label>
+          <label class="field">
+            <span>Stride</span>
+            <input id="concept-stride" name="concept-stride" value="1,4" inputmode="numeric" autocomplete="off">
+          </label>
+          <div class="button-row" role="group" aria-label="Concept presets">
+            <button type="button" data-concept-preset="column">Column-major</button>
+            <button type="button" data-concept-preset="row">Row-major</button>
+            <button type="button" data-concept-preset="strided">Strided</button>
+            <button type="button" data-concept-preset="broadcast">Broadcast</button>
+          </div>
+          <p class="hint">
+            Keep it small: two modes, up to 48 cells. Strides are non-negative integers.
+          </p>
+          <p class="error" id="concept-error" role="alert"></p>
+        </form>
+
+        <div class="panel visual-panel">
+          <div class="visual-header">
+            <h3>Coordinate grid</h3>
+            <span class="badge" id="concept-size">size 12</span>
+          </div>
+          <div class="layout-grid" id="concept-grid" role="img" aria-label="Layout coordinate grid"></div>
+          <div class="legend legend-inline" aria-hidden="true">
+            <span>0</span>
+            <span class="legend-bar"></span>
+            <span id="concept-max-offset">max</span>
+          </div>
+
+          <div class="visual-header memory-header">
+            <h3>Physical memory</h3>
+            <span class="badge">ascending offset</span>
+          </div>
+          <div class="memory-strip" id="concept-memory"></div>
+          <p class="readout" id="concept-readout" aria-live="polite">
+            Hover a logical cell to trace its offset into memory.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="coalesce">
+      <div class="section-head">
+        <p class="eyebrow">02 · Algorithm</p>
+        <h2>Coalesce merges modes without changing the map.</h2>
+        <p>
+          Two adjacent modes can merge when their offsets form one contiguous
+          run. The result has fewer modes, but evaluates to exactly the same
+          physical offsets. Colors mark the merge groups.
+        </p>
+      </div>
+
+      <div class="lab-grid">
+        <form class="panel controls" id="coalesce-controls">
+          <h3>Layout inputs</h3>
+          <label class="field">
+            <span>Shape</span>
+            <input id="coalesce-shape" name="coalesce-shape" value="3,2" inputmode="numeric" autocomplete="off">
+          </label>
+          <label class="field">
+            <span>Stride</span>
+            <input id="coalesce-stride" name="coalesce-stride" value="1,3" inputmode="numeric" autocomplete="off">
+          </label>
+          <div class="button-row" role="group" aria-label="Coalesce presets">
+            <button type="button" data-coalesce-preset="contiguous">Contiguous</button>
+            <button type="button" data-coalesce-preset="gap">With a gap</button>
+            <button type="button" data-coalesce-preset="column">Column-major</button>
+            <button type="button" data-coalesce-preset="broadcast">Broadcast</button>
+          </div>
+          <p class="hint">
+            Flat modes only. CuTe merges adjacent modes in order: <code>(2,3):(3,1)</code>
+            is contiguous in memory but not coalesced.
+          </p>
+          <p class="error" id="coalesce-error" role="alert"></p>
+        </form>
+
+        <div class="panel visual-panel">
+          <div class="visual-header">
+            <h3>Original modes</h3>
+            <span class="badge" id="coalesce-original-badge">2 modes</span>
+          </div>
+          <div class="mode-strip" id="coalesce-original-modes"></div>
+
+          <div class="visual-header memory-header">
+            <h3>Coalesced modes</h3>
+            <span class="badge" id="coalesce-result-badge">1 mode</span>
+          </div>
+          <div class="mode-strip" id="coalesce-result-modes"></div>
+
+          <div class="callout" id="coalesce-summary" aria-live="polite"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="gcd">
+      <div class="section-head">
+        <p class="eyebrow">03 · Algorithm</p>
+        <h2>Greatest common domain finds the aligned common shape.</h2>
+        <p>
+          The result depends only on the shapes. Its returned strides are the
+          offsets where those shared factors align. Try changing the order of
+          A's modes: the tensor is unchanged up to an index swap, but the common
+          domain can become much larger.
+        </p>
+      </div>
+
+      <div class="lab-grid">
+        <form class="panel controls" id="gcd-controls">
+          <h3>Shape inputs</h3>
+          <label class="field">
+            <span>Shape A</span>
+            <input id="gcd-a" name="gcd-a" value="4,3,5" inputmode="numeric" autocomplete="off">
+          </label>
+          <label class="field">
+            <span>Shape B</span>
+            <input id="gcd-b" name="gcd-b" value="6,10" inputmode="numeric" autocomplete="off">
+          </label>
+          <div class="button-row" role="group" aria-label="Greatest common domain presets">
+            <button type="button" data-gcd-preset="default">Default order</button>
+            <button type="button" data-gcd-preset="swapped">Swap A modes</button>
+            <button type="button" data-gcd-preset="coprime">Coprime</button>
+            <button type="button" data-gcd-preset="equal">Equal shapes</button>
+          </div>
+          <p class="hint">
+            Factors are processed in order. A different mode order is a different
+            walk, even when the total size is unchanged.
+          </p>
+          <p class="error" id="gcd-error" role="alert"></p>
+        </form>
+
+        <div class="panel visual-panel">
+          <div class="factor-row">
+            <span class="factor-label">A</span>
+            <div class="factor-strip" id="gcd-a-factors"></div>
+          </div>
+          <div class="factor-row">
+            <span class="factor-label">B</span>
+            <div class="factor-strip" id="gcd-b-factors"></div>
+          </div>
+          <div class="factor-row result-factor-row">
+            <span class="factor-label">G</span>
+            <div class="factor-strip" id="gcd-result-factors"></div>
+          </div>
+          <div class="callout" id="gcd-summary" aria-live="polite"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="copy">
+      <div class="section-head">
+        <p class="eyebrow">04 · Algorithm pipeline</p>
+        <h2>COPY turns one loop into four layout stages.</h2>
+        <p>
+          Pick a source/destination pair and step through the pipeline. The
+          colored cells are logical indices: matching colors mean the same
+          element. The stages reshape the domain, remove duplicate writes, and
+          align the loop to destination memory order before looking for a
+          contiguous vector.
+        </p>
+      </div>
+
+      <div class="copy-layout">
+        <div class="panel copy-controls">
+          <label class="field">
+            <span>Example</span>
+            <select id="copy-scenario" name="copy-scenario"></select>
+          </label>
+          <div class="stage-tabs" id="copy-stages" role="group" aria-label="COPY stages"></div>
+          <p class="hint" id="copy-scenario-description"></p>
+        </div>
+
+        <div class="panel visual-panel copy-visual">
+          <div class="copy-strips">
+            <div>
+              <div class="visual-header">
+                <h3>Source</h3>
+                <span class="badge" id="copy-src-badge">8:1</span>
+              </div>
+              <div class="sequence-strip" id="copy-src-strip"></div>
+            </div>
+            <div>
+              <div class="visual-header">
+                <h3>Destination</h3>
+                <span class="badge" id="copy-dst-badge">8:1</span>
+              </div>
+              <div class="sequence-strip" id="copy-dst-strip"></div>
+            </div>
+          </div>
+
+          <div class="stage-detail" id="copy-stage-detail" aria-live="polite"></div>
+          <div class="metrics" id="copy-metrics"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section notes">
+      <div class="section-head">
+        <p class="eyebrow">Keep exploring</p>
+        <h2>The algebra is small; the composition is the interesting part.</h2>
+        <p>
+          This page is a teaching companion, not a full CuTe implementation.
+          The concept and coalesce panels use flat integer layouts; the common
+          domain panel ports the shape-only walk; the COPY panel uses a small
+          set of precomputed examples from PyCuTe so the stage outputs stay
+          faithful.
+        </p>
+        <div class="link-row">
+          <a href="https://github.com/NVlabs/CuTe">NVlabs/CuTe</a>
+          <a href="https://arxiv.org/abs/2603.02298">CuTe whitepaper</a>
+          <a href="https://github.com/NVlabs/CuTe/blob/main/examples/algorithms/copy.ipynb">COPY notebook</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <p>Built as an interactive companion to the CuTe layout algebra.</p>
+  </footer>
+</body>
+</html>
