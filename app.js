@@ -610,186 +610,287 @@
     equal: { a: [16, 3], b: [16, 3] }
   };
 
-  function uniqueSorted(values) {
-    return values.filter(function (value, index, array) {
-      return array.indexOf(value) === index;
-    }).sort(function (a, b) {
-      return a - b;
+  function cumulativeLeaves(shape) {
+    var start = 0;
+    return shape.map(function (size, index) {
+      var leaf = {
+        index: index,
+        size: size,
+        start: start,
+        end: start + size
+      };
+      start += size;
+      return leaf;
     });
   }
 
-  function gcdGraphGeometry(shapeA, shapeB, result) {
-    var sizeA = sizeOf(shapeA);
-    var sizeB = sizeOf(shapeB);
-    var factorEnds = result.shape.map(function (value, index) {
-      return result.stride[index] + value;
+  function buildSideSubdomains(side, shape, result) {
+    var leaves = cumulativeLeaves(shape);
+    var byLeaf = leaves.map(function (leaf) {
+      return {
+        index: leaf.index,
+        size: leaf.size,
+        start: leaf.start,
+        end: leaf.end,
+        factors: []
+      };
     });
-    var maxExtent = Math.max.apply(null, [sizeA, sizeB, 1].concat(factorEnds));
-    var width = 760;
-    var left = 54;
-    var right = 18;
-    var plotWidth = width - left - right;
+    var trivial = result.shape.length === 1 && result.shape[0] === 1;
+
+    if (!trivial) {
+      result.shape.forEach(function (factorSize, factorIndex) {
+        var offset = result.stride[factorIndex];
+        var leafIndex = -1;
+
+        for (var index = 0; index < leaves.length; index += 1) {
+          if (offset >= leaves[index].start && offset < leaves[index].end) {
+            leafIndex = index;
+            break;
+          }
+        }
+        if (leafIndex === -1 && leaves.length) {
+          leafIndex = leaves.length - 1;
+        }
+        if (leafIndex >= 0) {
+          byLeaf[leafIndex].factors.push({
+            factorIndex: factorIndex,
+            size: factorSize,
+            offset: offset
+          });
+        }
+      });
+    }
+
+    var subdomains = [];
+    byLeaf.forEach(function (leaf) {
+      leaf.factors.sort(function (a, b) {
+        return a.offset - b.offset;
+      });
+
+      var product = leaf.factors.reduce(function (acc, factor) {
+        return acc * factor.size;
+      }, 1);
+      var factorable = leaf.factors.length > 0 && leaf.size % product === 0;
+      var parts = [];
+      var cursor = leaf.start;
+
+      if (!factorable) {
+        leaf.factors.forEach(function (factor) {
+          factor.spanning = true;
+        });
+        if (leaf.size > 1) {
+          parts.push({
+            size: leaf.size,
+            factorIndex: null,
+            start: cursor,
+            end: cursor + leaf.size,
+            shared: false
+          });
+        }
+      } else {
+        leaf.factors.forEach(function (factor) {
+          parts.push({
+            size: factor.size,
+            factorIndex: factor.factorIndex,
+            start: cursor,
+            end: cursor + factor.size,
+            shared: true
+          });
+          cursor += factor.size;
+        });
+
+        var residual = leaf.size / product;
+        if (residual > 1) {
+          parts.push({
+            size: residual,
+            factorIndex: null,
+            start: cursor,
+            end: cursor + residual,
+            shared: false
+          });
+        }
+      }
+
+      parts.forEach(function (part, partIndex) {
+        subdomains.push({
+          side: side,
+          leafIndex: leaf.index,
+          originalSize: leaf.size,
+          partIndex: partIndex,
+          partCount: parts.length,
+          size: part.size,
+          factorIndex: part.factorIndex,
+          start: part.start,
+          end: part.end,
+          shared: part.shared
+        });
+      });
+    });
 
     return {
-      width: width,
-      left: left,
-      right: right,
-      plotWidth: plotWidth,
-      maxExtent: maxExtent,
-      sizeA: sizeA,
-      sizeB: sizeB,
-      x: function (value) {
-        return left + (value / maxExtent) * plotWidth;
-      }
+      leaves: byLeaf,
+      subdomains: subdomains
     };
   }
 
-  function gcdGuideMarkup(geometry, result, height) {
-    var guides = [];
-    result.shape.forEach(function (value, index) {
-      guides.push(result.stride[index]);
-      guides.push(result.stride[index] + value);
-    });
-    return uniqueSorted(guides).map(function (value) {
-      var x = geometry.x(value);
-      return (
-        '<line class="gcd-guide" x1="' + x + '" x2="' + x +
-        '" y1="0" y2="' + height + '"></line>'
-      );
-    }).join('');
-  }
+  function buildGcdAlignmentRows(shapeA, shapeB, result) {
+    var sideA = buildSideSubdomains('A', shapeA, result);
+    var sideB = buildSideSubdomains('B', shapeB, result);
+    var trivial = result.shape.length === 1 && result.shape[0] === 1;
+    var rows = [];
 
-  function renderGcdOriginalGraph(container, shapeA, shapeB, result) {
-    var geometry = gcdGraphGeometry(shapeA, shapeB, result);
-    var rowHeight = 42;
-    var rowGap = 22;
-    var top = 28;
-    var bottom = 16;
-    var height = top + rowHeight * 2 + rowGap + bottom;
-    var parts = [
-      '<svg viewBox="0 0 ' + geometry.width + ' ' + height +
-      '" role="img" aria-label="Original A and B domain leaves">'
-    ];
-
-    function leafRow(y, label, shape) {
-      var start = 0;
-      var row = [
-        '<text class="gcd-row-label" x="14" y="' + (y + rowHeight / 2 + 5) + '">' +
-        label + '</text>'
-      ];
-      shape.forEach(function (size, index) {
-        var end = start + size;
-        var x = geometry.x(start);
-        var width = Math.max(2, geometry.x(end) - x);
-        var color = colorForIndex(index, Math.max(1, shape.length));
-        row.push(
-          '<g><title>' + label + ' leaf ' + index + ': size ' + size + '</title>' +
-          '<rect class="gcd-leaf" x="' + x + '" y="' + y + '" width="' + width +
-          '" height="' + rowHeight + '" rx="9" fill="' + color + '"></rect>' +
-          '<text class="gcd-leaf-size" x="' + (x + width / 2) + '" y="' +
-          (y + rowHeight / 2 - 2) + '">' + size + '</text>'
-        );
-        if (width > 54) {
-          row.push(
-            '<text class="gcd-leaf-note" x="' + (x + width / 2) + '" y="' +
-            (y + rowHeight / 2 + 14) + '">leaf ' + index + '</text>'
-          );
+    if (!trivial) {
+      result.shape.forEach(function (size, factorIndex) {
+        var aPart = sideA.subdomains.find(function (part) {
+          return part.factorIndex === factorIndex;
+        }) || null;
+        var bPart = sideB.subdomains.find(function (part) {
+          return part.factorIndex === factorIndex;
+        }) || null;
+        var keys = [];
+        if (aPart) {
+          keys.push(aPart.start);
         }
-        row.push('</g>');
-        start = end;
+        if (bPart) {
+          keys.push(bPart.start);
+        }
+        rows.push({
+          type: 'shared',
+          factorIndex: factorIndex,
+          size: size,
+          a: aPart,
+          b: bPart,
+          key: keys.length ? Math.min.apply(null, keys) : result.stride[factorIndex],
+          tie: 0
+        });
       });
-      return row.join('');
     }
 
-    parts.push(leafRow(top, 'A', shapeA));
-    parts.push(leafRow(top + rowHeight + rowGap, 'B', shapeB));
-    parts.push(gcdGuideMarkup(geometry, result, height));
-    parts.push('</svg>');
-    container.innerHTML = parts.join('');
-    return geometry;
+    sideA.subdomains.forEach(function (part) {
+      if (part.factorIndex === null) {
+        rows.push({
+          type: 'unshared',
+          side: 'A',
+          sub: part,
+          key: part.start,
+          tie: 1
+        });
+      }
+    });
+    sideB.subdomains.forEach(function (part) {
+      if (part.factorIndex === null) {
+        rows.push({
+          type: 'unshared',
+          side: 'B',
+          sub: part,
+          key: part.start,
+          tie: 2
+        });
+      }
+    });
+
+    rows.sort(function (left, right) {
+      if (left.key !== right.key) {
+        return left.key - right.key;
+      }
+      if (left.tie !== right.tie) {
+        return left.tie - right.tie;
+      }
+      return (left.factorIndex || 0) - (right.factorIndex || 0);
+    });
+
+    return {
+      rows: rows,
+      sideA: sideA,
+      sideB: sideB,
+      trivial: trivial
+    };
   }
 
-  function renderGcdFactorGraph(container, result, geometry) {
-    var rowHeight = 46;
-    var top = 26;
-    var bottom = 44;
-    var height = top + rowHeight + bottom;
-    var axisY = top + rowHeight + 14;
-    var parts = [
-      '<svg viewBox="0 0 ' + geometry.width + ' ' + height +
-      '" role="img" aria-label="Greatest common domain factor leaves">',
-      '<rect class="gcd-factor-track" x="' + geometry.x(0) + '" y="' + top +
-      '" width="' + (geometry.x(geometry.maxExtent) - geometry.x(0)) +
-      '" height="' + rowHeight + '" rx="10"></rect>',
-      '<text class="gcd-row-label" x="14" y="' + (top + rowHeight / 2 + 5) + '">G</text>'
-    ];
+  function subdomainMarkup(subdomain, side, factorCount) {
+    if (!subdomain) {
+      return '<div class="factor-empty"><span>spans leaves</span></div>';
+    }
 
-    result.shape.forEach(function (size, index) {
-      var start = result.stride[index];
-      var end = start + size;
-      var x = geometry.x(start);
-      var width = Math.max(2, geometry.x(end) - x);
-      var color = colorForValue(start, 0, geometry.maxExtent);
-      parts.push(
-        '<g><title>GCD factor ' + index + ': size ' + size +
-        ' at offset ' + start + '</title>' +
-        '<rect class="gcd-factor" x="' + x + '" y="' + top + '" width="' + width +
-        '" height="' + rowHeight + '" rx="9" fill="' + color + '"></rect>' +
-        '<text class="gcd-factor-size" x="' + (x + width / 2) + '" y="' +
-        (top + rowHeight / 2 - 2) + '">' + size + '</text>'
-      );
-      if (width > 46) {
-        parts.push(
-          '<text class="gcd-factor-note" x="' + (x + width / 2) + '" y="' +
-          (top + rowHeight / 2 + 14) + '">@' + start + '</text>'
+    var shared = subdomain.factorIndex !== null;
+    var tag = shared ? '↔ G' + subdomain.factorIndex : 'unshared';
+    var partLabel = subdomain.partCount > 1
+      ? 'part ' + (subdomain.partIndex + 1) + '/' + subdomain.partCount
+      : '';
+    var color = shared
+      ? colorForIndex(subdomain.factorIndex, Math.max(1, factorCount))
+      : 'var(--panel-soft)';
+
+    return (
+      '<div class="subdomain ' + (shared ? 'is-shared' : 'is-unshared') +
+      '" style="--subdomain-color:' + color + '">' +
+      '<div class="subdomain-meta"><span>' + side + subdomain.leafIndex +
+      ' · ' + subdomain.originalSize + '</span>' +
+      (partLabel ? '<span>' + partLabel + '</span>' : '') + '</div>' +
+      '<strong class="subdomain-size">' + subdomain.size + '</strong>' +
+      '<span class="subdomain-tag">' + tag + '</span></div>'
+    );
+  }
+
+  function factorMarkup(factorIndex, size, factorCount) {
+    return (
+      '<div class="gcd-factor-box" style="--factor-color:' +
+      colorForIndex(factorIndex, Math.max(1, factorCount)) + '">' +
+      '<span class="factor-meta">G' + factorIndex + '</span>' +
+      '<strong class="factor-size">' + size + '</strong>' +
+      '<span class="factor-tag">shared factor</span></div>'
+    );
+  }
+
+  function emptyMarkup(label) {
+    return (
+      '<div class="factor-empty">' +
+      (label ? '<span>' + label + '</span>' : '') +
+      '</div>'
+    );
+  }
+
+  function renderGcdAlignment(container, shapeA, shapeB, result) {
+    var alignment = buildGcdAlignmentRows(shapeA, shapeB, result);
+    var factorCount = Math.max(1, result.shape.length);
+
+    container.innerHTML = alignment.rows.map(function (row) {
+      if (row.type === 'shared') {
+        return (
+          '<div class="factor-align-row is-shared">' +
+          subdomainMarkup(row.a, 'A', factorCount) +
+          factorMarkup(row.factorIndex, row.size, factorCount) +
+          subdomainMarkup(row.b, 'B', factorCount) +
+          '</div>'
         );
       }
-      parts.push('</g>');
-    });
 
-    parts.push(gcdGuideMarkup(geometry, result, height));
+      var left = row.side === 'A'
+        ? subdomainMarkup(row.sub, 'A', factorCount)
+        : emptyMarkup('');
+      var right = row.side === 'B'
+        ? subdomainMarkup(row.sub, 'B', factorCount)
+        : emptyMarkup('');
 
-    var ticks = uniqueSorted(
-      [0, geometry.maxExtent]
-        .concat(result.stride)
-        .concat(result.shape.map(function (value, index) {
-          return result.stride[index] + value;
-        }))
-    );
-    parts.push(
-      '<line class="gcd-axis" x1="' + geometry.x(0) + '" y1="' + axisY +
-      '" x2="' + geometry.x(geometry.maxExtent) + '" y2="' + axisY + '"></line>'
-    );
-    ticks.forEach(function (value) {
-      var x = geometry.x(value);
-      parts.push(
-        '<line class="gcd-axis-tick" x1="' + x + '" y1="' + (axisY - 4) +
-        '" x2="' + x + '" y2="' + (axisY + 4) + '"></line>' +
-        '<text class="gcd-tick-label" x="' + x + '" y="' + (axisY + 18) + '">' +
-        value + '</text>'
+      return (
+        '<div class="factor-align-row is-unshared">' +
+        left + emptyMarkup('') + right +
+        '</div>'
       );
-    });
+    }).join('');
 
-    parts.push('</svg>');
-    container.innerHTML = parts.join('');
-  }
-
-  function renderGcdGraphs(originalContainer, factorContainer, shapeA, shapeB, result) {
-    var geometry = renderGcdOriginalGraph(originalContainer, shapeA, shapeB, result);
-    renderGcdFactorGraph(factorContainer, result, geometry);
+    return alignment;
   }
 
   function initGcd() {
     var inputA = document.getElementById('gcd-a');
     var inputB = document.getElementById('gcd-b');
     var error = document.getElementById('gcd-error');
-    var originalGraph = document.getElementById('gcd-original-graph');
-    var factorGraph = document.getElementById('gcd-factor-graph');
-    var originalBadge = document.getElementById('gcd-original-badge');
+    var factorAlign = document.getElementById('gcd-factor-align');
     var factorBadge = document.getElementById('gcd-factor-badge');
     var summary = document.getElementById('gcd-summary');
 
-    if (!inputA || !inputB || !originalGraph || !factorGraph) {
+    if (!inputA || !inputB || !factorAlign) {
       return;
     }
 
@@ -821,11 +922,12 @@
       var sharedSize = gcd(sizeA, sizeB);
       var coverage = sharedSize ? Math.round((sizeG / sharedSize) * 100) : 0;
 
-      renderGcdGraphs(originalGraph, factorGraph, shapeA, shapeB, result);
-      setText(originalBadge, '|A| = ' + sizeA + ' · |B| = ' + sizeB);
+      var alignment = renderGcdAlignment(factorAlign, shapeA, shapeB, result);
       setText(
         factorBadge,
-        result.shape.length + (result.shape.length === 1 ? ' shared factor' : ' shared factors')
+        alignment.trivial
+          ? 'no nontrivial shared factor'
+          : result.shape.length + (result.shape.length === 1 ? ' shared factor' : ' shared factors')
       );
 
       var resultText = formatLayout(result.shape, result.stride);
@@ -833,7 +935,7 @@
         '<strong>G = ' + resultText + '</strong><br>' +
         'size(G) = ' + sizeG + ' · gcd(|A|, |B|) = ' + sharedSize +
         ' · ' + coverage + '% of the shared size.<br>' +
-        'Dashed guides show where each factor lands in both original domains.<br>' +
+        'Shared subdomains align horizontally; unshared subdomains dangle in their own row.<br>' +
         (sizeG === sizeA && sizeG === sizeB
           ? 'The whole domain is compatible.'
           : sizeG === 1
@@ -1241,9 +1343,8 @@
     coalesceLayout: coalesceLayout,
     greatestCommonDomain: greatestCommonDomain,
     layoutOffsets: layoutOffsets,
-    gcdGraphGeometry: gcdGraphGeometry,
-    renderGcdOriginalGraph: renderGcdOriginalGraph,
-    renderGcdFactorGraph: renderGcdFactorGraph,
+    buildGcdAlignmentRows: buildGcdAlignmentRows,
+    renderGcdAlignment: renderGcdAlignment,
     COPY_SCENARIOS: COPY_SCENARIOS
   };
 
