@@ -1171,212 +1171,372 @@
     }
   ];
 
-  var COPY_STAGE_LABELS = [
-    '0 · Reference',
-    '1 · Common',
-    '2 · Nullspace',
-    '3 · Align',
-    '4 · Vector'
-  ];
+  function groupIndicesByValue(values) {
+    var groups = new Map();
+    values.forEach(function (value, index) {
+      if (!groups.has(value)) {
+        groups.set(value, []);
+      }
+      groups.get(value).push(index);
+    });
+    return groups;
+  }
+
+  function longestCommonRun(left, right) {
+    var best = 0;
+    var current = 0;
+    for (var index = 0; index < left.length; index += 1) {
+      if (index > 0 && left[index] === left[index - 1] + 1 && right[index] === right[index - 1] + 1) {
+        current += 1;
+      } else {
+        current = 1;
+      }
+      best = Math.max(best, current);
+    }
+    return best;
+  }
+
+  function nullspaceSummary(layout) {
+    var zeroModes = [];
+    layout.stride.forEach(function (stride, index) {
+      if (stride === 0) {
+        zeroModes.push(index);
+      }
+    });
+    if (!zeroModes.length) {
+      return {
+        layout: { shape: [1], stride: [0] },
+        size: 1,
+        modes: zeroModes
+      };
+    }
+
+    var prefix = [];
+    var running = 1;
+    layout.shape.forEach(function (size) {
+      prefix.push(running);
+      running *= size;
+    });
+
+    var shape = zeroModes.map(function (index) { return layout.shape[index]; });
+    var stride = zeroModes.map(function (index) { return prefix[index]; });
+    return {
+      layout: { shape: shape, stride: stride },
+      size: sizeOf(shape),
+      modes: zeroModes
+    };
+  }
+
+  function analyzeCopy(srcLayout, dstLayout) {
+    var total = sizeOf(srcLayout.shape);
+    var srcOffsets = layoutOffsets(srcLayout);
+    var dstOffsets = layoutOffsets(dstLayout);
+    var common = greatestCommonDomain(srcLayout.shape, dstLayout.shape);
+    var commonSize = sizeOf(common.shape);
+    var dstGroups = groupIndicesByValue(dstOffsets);
+    var uniqueAddresses = dstGroups.size;
+    var duplicateWrites = total - uniqueAddresses;
+    var writeAfterWrite = false;
+
+    dstGroups.forEach(function (indices) {
+      var firstSourceOffset = srcOffsets[indices[0]];
+      for (var index = 1; index < indices.length; index += 1) {
+        if (srcOffsets[indices[index]] !== firstSourceOffset) {
+          writeAfterWrite = true;
+        }
+      }
+    });
+
+    var order = srcOffsets.map(function (_, index) { return index; });
+    order.sort(function (left, right) {
+      return (dstOffsets[left] - dstOffsets[right]) || (left - right);
+    });
+    var alignedSrc = order.map(function (index) { return srcOffsets[index]; });
+    var alignedDst = order.map(function (index) { return dstOffsets[index]; });
+    var vectorWidth = dstLayout.shape.length === 1
+      ? (srcLayout.stride[0] === 1 ? srcLayout.shape[0] : 1)
+      : longestCommonRun(alignedSrc, alignedDst);
+    var nullspace = nullspaceSummary(dstLayout);
+    var optimizedWrites = writeAfterWrite
+      ? null
+      : Math.ceil((total - duplicateWrites) / Math.max(1, vectorWidth));
+
+    return {
+      total: total,
+      srcOffsets: srcOffsets,
+      dstOffsets: dstOffsets,
+      common: common,
+      commonSize: commonSize,
+      incompatSize: total / commonSize,
+      uniqueAddresses: uniqueAddresses,
+      duplicateWrites: duplicateWrites,
+      writeAfterWrite: writeAfterWrite,
+      order: order,
+      alignedSrc: alignedSrc,
+      alignedDst: alignedDst,
+      vectorWidth: vectorWidth,
+      nullspace: nullspace,
+      optimizedWrites: optimizedWrites
+    };
+  }
+
+  function layoutsEqual(left, right) {
+    return left.shape.length === right.shape.length &&
+      left.stride.length === right.stride.length &&
+      left.shape.every(function (value, index) { return value === right.shape[index]; }) &&
+      left.stride.every(function (value, index) { return value === right.stride[index]; });
+  }
+
+  function stageCardMarkup(number, title, body, visual) {
+    return (
+      '<section class="stage-card">' +
+      '<div class="stage-heading"><span class="stage-number">' + number + '</span>' +
+      '<h3>' + title + '</h3></div>' +
+      '<p>' + body + '</p>' +
+      (visual ? '<div class="stage-visual">' + visual + '</div>' : '') +
+      '</section>'
+    );
+  }
 
   function initCopy() {
-    var select = document.getElementById('copy-scenario');
-    var stageTabs = document.getElementById('copy-stages');
+    var presetSelect = document.getElementById('copy-preset');
+    var srcShapeInput = document.getElementById('copy-src-shape');
+    var srcStrideInput = document.getElementById('copy-src-stride');
+    var dstShapeInput = document.getElementById('copy-dst-shape');
+    var dstStrideInput = document.getElementById('copy-dst-stride');
     var description = document.getElementById('copy-scenario-description');
+    var error = document.getElementById('copy-error');
     var srcBadge = document.getElementById('copy-src-badge');
     var dstBadge = document.getElementById('copy-dst-badge');
     var srcStrip = document.getElementById('copy-src-strip');
     var dstStrip = document.getElementById('copy-dst-strip');
-    var detail = document.getElementById('copy-stage-detail');
     var metrics = document.getElementById('copy-metrics');
+    var stageList = document.getElementById('copy-stage-list');
 
-    if (!select || !stageTabs || !srcStrip || !dstStrip || !detail || !metrics) {
+    if (!presetSelect || !srcShapeInput || !srcStrideInput || !dstShapeInput ||
+        !dstStrideInput || !srcStrip || !dstStrip || !metrics || !stageList) {
       return;
     }
 
-    var state = {
-      scenarioIndex: 0,
-      stage: 0,
-      activeIndex: null
-    };
+    var activeIndex = null;
 
-    select.innerHTML = COPY_SCENARIOS.map(function (scenario, index) {
-      return '<option value="' + index + '">' + scenario.name + '</option>';
-    }).join('');
-
-    stageTabs.innerHTML = COPY_STAGE_LABELS.map(function (label, index) {
-      return (
-        '<button type="button" data-copy-stage="' + index + '" aria-pressed="' +
-        (index === 0 ? 'true' : 'false') + '">' + label + '</button>'
-      );
-    }).join('');
-
-    function scenario() {
-      return COPY_SCENARIOS[state.scenarioIndex];
-    }
+    presetSelect.innerHTML =
+      '<option value="custom">Custom</option>' +
+      COPY_SCENARIOS.map(function (scenario, index) {
+        return '<option value="' + index + '">' + scenario.name + '</option>';
+      }).join('');
 
     function activateIndex(index) {
-      state.activeIndex = index;
-      Array.prototype.forEach.call(document.querySelectorAll('#copy-src-strip .sequence-cell, #copy-dst-strip .sequence-cell'), function (cell) {
-        cell.classList.toggle('is-active', Number(cell.getAttribute('data-index')) === index);
-      });
+      activeIndex = index;
+      Array.prototype.forEach.call(
+        document.querySelectorAll('#copy-src-strip .sequence-cell, #copy-dst-strip .sequence-cell'),
+        function (cell) {
+          cell.classList.toggle('is-active', Number(cell.getAttribute('data-index')) === index);
+        }
+      );
     }
 
     function clearActiveIndex() {
-      state.activeIndex = null;
-      Array.prototype.forEach.call(document.querySelectorAll('#copy-src-strip .sequence-cell, #copy-dst-strip .sequence-cell'), function (cell) {
-        cell.classList.remove('is-active');
-      });
+      activeIndex = null;
+      Array.prototype.forEach.call(
+        document.querySelectorAll('#copy-src-strip .sequence-cell, #copy-dst-strip .sequence-cell'),
+        function (cell) {
+          cell.classList.remove('is-active');
+        }
+      );
     }
 
-    function renderBaseStrips() {
-      var current = scenario();
-      renderLayoutSequence(srcStrip, current.src, {
-        onHover: activateIndex,
-        onLeave: clearActiveIndex,
-        onClick: activateIndex
-      });
-      renderLayoutSequence(dstStrip, current.dst, {
-        onHover: activateIndex,
-        onLeave: clearActiveIndex,
-        onClick: activateIndex
-      });
-      setText(srcBadge, formatLayout(current.src.shape, current.src.stride));
-      setText(dstBadge, formatLayout(current.dst.shape, current.dst.stride));
+    function readLayout(shapeInput, strideInput) {
+      return {
+        shape: parseList(shapeInput.value),
+        stride: parseList(strideInput.value)
+      };
     }
 
-    function renderMetrics() {
-      var current = scenario();
-      var m = current.metrics;
-      metrics.innerHTML = [
-        ['Common size', m.commonSize],
-        ['Incompat size', m.incompatSize],
-        ['Vector width', m.vectorWidth],
-        ['Reference writes', m.referenceWrites],
-        ['Optimized writes', m.optimizedWrites]
-      ].map(function (item) {
+    function renderMetrics(analysis) {
+      var items = [
+        ['Common size', analysis.commonSize],
+        ['Incompat size', analysis.incompatSize],
+        ['Unique addresses', analysis.uniqueAddresses],
+        ['Vector width', analysis.vectorWidth],
+        ['Reference writes', analysis.total],
+        ['Optimized writes', analysis.optimizedWrites === null ? '—' : analysis.optimizedWrites]
+      ];
+      metrics.innerHTML = items.map(function (item) {
         return (
           '<div class="metric"><span>' + item[0] + '</span><strong>' +
-          formatNumber(item[1]) + '</strong></div>'
+          (typeof item[1] === 'number' ? formatNumber(item[1]) : item[1]) +
+          '</strong></div>'
         );
       }).join('');
     }
 
-    function renderStageDetail() {
-      var current = scenario();
-      var m = current.metrics;
-      var srcOffsets = layoutOffsets(current.src);
-      var dstOffsets = layoutOffsets(current.dst);
-      var html = '';
+    function renderStages(analysis, srcLayout, dstLayout) {
+      var commonText = formatLayout(analysis.common.shape, analysis.common.stride);
+      var nullspaceText = formatLayout(
+        analysis.nullspace.layout.shape,
+        analysis.nullspace.layout.stride
+      );
 
-      if (state.stage === 0) {
-        html =
-          '<h3>Reference COPY</h3>' +
-          '<p>Iterate one flat index <code>i</code> and evaluate both layouts. ' +
-          'The colors show the logical element identity; the offsets show where each side lands.</p>' +
-          '<div class="layout-line">for i in 0…' + (sizeOf(current.src.shape) - 1) +
-          ': dst[i] = src[i]</div>';
-      } else if (state.stage === 1) {
-        html =
-          '<h3>Stage 1 · Common domain</h3>' +
-          '<p><code>greatest_common_domain</code> is shape-only. It finds the aligned factor ' +
-          'that both layouts can tile. Only this compatible part is eligible for later optimization.</p>' +
-          '<div class="layout-line">G = ' + m.common + '</div>' +
-          '<div class="visual-header memory-header"><h3>Compat</h3><span class="badge">' +
-          m.commonSize + '</span></div>' +
+      var stage0 =
+        '<div class="layout-line">for i in 0…' + (analysis.total - 1) + ': dst[i] = src[i]</div>' +
+        '<p class="stage-note">The reference loop is correct for any pair of equal-size layouts. ' +
+        'Everything after this stage is about changing the order in which that same set of copies is executed.</p>';
+
+      var stage1 =
+        '<div class="layout-line">G = ' + commonText + '</div>' +
+        '<div class="stage-grid-2">' +
+        '<div><div class="mini-label">Compat · ' + analysis.commonSize + '</div>' +
+        '<div class="sequence-strip">' + sizeStripMarkup(analysis.commonSize, { color: 'hsl(196 72% 64%)' }) + '</div></div>' +
+        '<div><div class="mini-label">InCompat · ' + analysis.incompatSize + '</div>' +
+        '<div class="sequence-strip">' + sizeStripMarkup(analysis.incompatSize, { color: 'var(--panel-soft)' }) + '</div></div>' +
+        '</div>' +
+        '<p class="stage-note">Only the compatible portion can be reshaped by the later stages. ' +
+        'The incompatible portion remains an outer grid and is copied as-is.</p>';
+
+      var stage2;
+      if (analysis.writeAfterWrite) {
+        stage2 =
+          '<div class="layout-line stage-error">write-after-write conflict detected</div>' +
+          '<p class="stage-note">At least two logical elements map to the same destination address but carry ' +
+          'different source values. The reference loop would keep whichever write happens last, so the optimized ' +
+          'path rejects this case.</p>';
+      } else if (analysis.duplicateWrites > 0) {
+        stage2 =
+          '<div class="layout-line">unique destination addresses = ' + analysis.uniqueAddresses +
+          ' · duplicate writes removed = ' + analysis.duplicateWrites + '</div>' +
           '<div class="sequence-strip">' +
-          sizeStripMarkup(m.commonSize, { color: 'hsl(196 72% 64%)' }) +
+          sizeStripMarkup(analysis.uniqueAddresses, { color: 'hsl(42 86% 62%)' }) +
           '</div>' +
-          '<div class="visual-header memory-header"><h3>InCompat</h3><span class="badge">' +
-          m.incompatSize + '</span></div>' +
-          '<div class="sequence-strip">' +
-          sizeStripMarkup(m.incompatSize, { color: 'var(--panel-soft)' }) +
-          '</div>';
-      } else if (state.stage === 2) {
-        if (m.nullSize > 1) {
-          var dropped = Math.max(0, m.nullSize - 1);
-          html =
-            '<h3>Stage 2 · Nullspace</h3>' +
-            '<p><code>nullspace(dst)</code> collects coordinates that share one destination address. ' +
-            'The source is constant across them, so all but one write can be dropped.</p>' +
-            '<div class="layout-line">nullspace(dst) = ' + m.nullspace +
-            ' · duplicate writes removed: ' + dropped + '</div>' +
-            '<div class="sequence-strip">' +
-            sizeStripMarkup(m.nullSize, { color: 'hsl(42 86% 62%)', subLabel: '@0' }) +
-            '</div>';
-        } else {
-          html =
-            '<h3>Stage 2 · Nullspace</h3>' +
-            '<p>This example has no stride-0 aliasing in the destination, so there are no duplicate writes to remove.</p>' +
-            '<div class="layout-line">nullspace(dst) = ' + m.nullspace + '</div>';
-        }
-      } else if (state.stage === 3) {
-        var aligned = srcOffsets.map(function (_, index) { return index; });
-        aligned.sort(function (left, right) {
-          return (dstOffsets[left] - dstOffsets[right]) || (left - right);
-        });
-        var alignedOffsets = aligned.map(function (index) { return dstOffsets[index]; });
-        html =
-          '<h3>Stage 3 · Alignment</h3>' +
-          '<p><code>right_inverse(dst)</code> reorders the loop into destination-memory order. ' +
-          'Both layouts are permuted together, so the elements still match.</p>' +
-          '<div class="layout-line">right_inverse(dst) = ' + m.invDst + '</div>' +
-          '<div class="visual-header memory-header"><h3>Reference order</h3><span class="badge">destination offsets</span></div>' +
-          '<div class="sequence-strip">' + sequenceMarkup(dstOffsets) + '</div>' +
-          '<div class="visual-header memory-header"><h3>Aligned order</h3><span class="badge">ascending destination offsets</span></div>' +
-          '<div class="sequence-strip">' + sequenceMarkup(alignedOffsets, {
-            indices: aligned,
-            colorTotal: srcOffsets.length
-          }) + '</div>';
+          '<p class="stage-note">Several coordinates write the same value to the same address. ' +
+          'Nullspace analysis keeps one write and removes the duplicates.</p>';
       } else {
-        var vectorCells = [];
-        for (var vectorIndex = 0; vectorIndex < m.vectorWidth; vectorIndex += 1) {
-          vectorCells.push(
-            '<div class="vector-cell" style="--cell-color:' +
-            colorForIndex(vectorIndex, m.vectorWidth) + '">' + vectorIndex + '</div>'
-          );
-        }
-        html =
-          '<h3>Stage 4 · Vector run</h3>' +
-          '<p>The vector width is the leading contiguous run of the aligned source. ' +
-          'When the leading stride is not 1, the copy falls back to scalar.</p>' +
-          '<div class="layout-line">aligned src lead = ' + m.srcLead +
-          ' · vector width V = ' + m.vectorWidth + '</div>' +
-          '<div class="vector-strip">' + vectorCells.join('') + '</div>';
+        stage2 =
+          '<div class="layout-line">nullspace(dst) = ' + nullspaceText + '</div>' +
+          '<p class="stage-note">No two logical elements share a destination address in this example, ' +
+          'so nullspace analysis does not remove any writes.</p>';
       }
 
-      detail.innerHTML = html;
+      var stage3 =
+        '<div class="stage-grid-2">' +
+        '<div><div class="mini-label">Reference order · destination offsets</div>' +
+        '<div class="sequence-strip">' + sequenceMarkup(analysis.dstOffsets) + '</div></div>' +
+        '<div><div class="mini-label">Destination-memory order</div>' +
+        '<div class="sequence-strip">' + sequenceMarkup(analysis.alignedDst, {
+          indices: analysis.order,
+          colorTotal: analysis.total
+        }) + '</div></div>' +
+        '</div>' +
+        '<p class="stage-note">The same logical elements are permuted together. After alignment, the destination ' +
+        'advances through memory in ascending order, which makes the inner loop friendlier to vector loads and stores.</p>';
+
+      var vectorCells = [];
+      for (var vectorIndex = 0; vectorIndex < analysis.vectorWidth; vectorIndex += 1) {
+        vectorCells.push(
+          '<div class="vector-cell" style="--cell-color:' +
+          colorForIndex(vectorIndex, analysis.vectorWidth) + '">' + vectorIndex + '</div>'
+        );
+      }
+      var stage4 =
+        '<div class="layout-line">vector width V = ' + analysis.vectorWidth +
+        ' · optimized writes = ' + (analysis.optimizedWrites === null ? '—' : analysis.optimizedWrites) + '</div>' +
+        '<div class="vector-strip">' + vectorCells.join('') + '</div>' +
+        '<p class="stage-note">A vector move is useful only when the same run is contiguous on both sides. ' +
+        'When the aligned leading run is not contiguous, V falls back to 1 and the copy remains scalar. ' +
+        (analysis.isCustom
+          ? "Custom layouts use the page's simplified integer-layout estimate."
+          : 'This preset uses the reference PyCuTe vector width.') +
+        '</p>';
+
+      stageList.innerHTML =
+        stageCardMarkup(0, 'Reference loop', 'Iterate the flat domain once. The source and destination layouts decide where each logical element lands.', stage0) +
+        stageCardMarkup(1, 'Common domain', 'Find the shape-only domain both layouts can tile. This is the part of the iteration space the later stages may optimize.', stage1) +
+        stageCardMarkup(2, 'Nullspace and duplicate writes', 'Group coordinates that land on the same destination address. Constant writes can be dropped; conflicting writes are rejected.', stage2) +
+        stageCardMarkup(3, 'Alignment', 'Reorder the loop into destination-memory order while applying the same permutation to the source.', stage3) +
+        stageCardMarkup(4, 'Vector selection', 'Look for a run that is contiguous on both sides after alignment. The run length becomes the vector width.', stage4);
     }
 
     function render() {
-      var current = scenario();
-      setText(description, current.description);
-      renderBaseStrips();
-      renderMetrics();
-      renderStageDetail();
-      Array.prototype.forEach.call(stageTabs.querySelectorAll('[data-copy-stage]'), function (button) {
-        button.setAttribute(
-          'aria-pressed',
-          Number(button.getAttribute('data-copy-stage')) === state.stage ? 'true' : 'false'
-        );
-      });
-    }
+      var srcLayout = readLayout(srcShapeInput, srcStrideInput);
+      var dstLayout = readLayout(dstShapeInput, dstStrideInput);
+      var message =
+        validateFlatLayout(srcLayout.shape, srcLayout.stride, { maxRank: 3, maxSize: 64 }) ||
+        validateFlatLayout(dstLayout.shape, dstLayout.stride, { maxRank: 3, maxSize: 64 });
 
-    select.addEventListener('change', function () {
-      state.scenarioIndex = Number(select.value);
-      state.stage = 0;
-      render();
-    });
+      if (!message && sizeOf(srcLayout.shape) !== sizeOf(dstLayout.shape)) {
+        message = 'Source and destination must have the same total size.';
+      }
 
-    stageTabs.addEventListener('click', function (event) {
-      var button = event.target.closest('[data-copy-stage]');
-      if (!button) {
+      if (message) {
+        setError(error, message);
+        metrics.innerHTML = '';
+        stageList.innerHTML = '';
+        srcStrip.innerHTML = '';
+        dstStrip.innerHTML = '';
         return;
       }
-      state.stage = Number(button.getAttribute('data-copy-stage'));
+
+      setError(error, '');
+      var analysis = analyzeCopy(srcLayout, dstLayout);
+      var preset = COPY_SCENARIOS.find(function (scenario) {
+        return layoutsEqual(srcLayout, scenario.src) && layoutsEqual(dstLayout, scenario.dst);
+      });
+      if (preset) {
+        analysis.commonSize = preset.metrics.commonSize;
+        analysis.incompatSize = preset.metrics.incompatSize;
+        analysis.vectorWidth = preset.metrics.vectorWidth;
+        analysis.optimizedWrites = preset.metrics.optimizedWrites;
+        analysis.presetName = preset.name;
+      } else {
+        analysis.isCustom = true;
+      }
+      setText(srcBadge, formatLayout(srcLayout.shape, srcLayout.stride));
+      setText(dstBadge, formatLayout(dstLayout.shape, dstLayout.stride));
+
+      renderLayoutSequence(srcStrip, srcLayout, {
+        onHover: activateIndex,
+        onLeave: clearActiveIndex,
+        onClick: activateIndex
+      });
+      renderLayoutSequence(dstStrip, dstLayout, {
+        onHover: activateIndex,
+        onLeave: clearActiveIndex,
+        onClick: activateIndex
+      });
+      renderMetrics(analysis);
+      renderStages(analysis, srcLayout, dstLayout);
+    }
+
+    presetSelect.addEventListener('change', function () {
+      if (presetSelect.value === 'custom') {
+        return;
+      }
+      var scenario = COPY_SCENARIOS[Number(presetSelect.value)];
+      if (!scenario) {
+        return;
+      }
+      srcShapeInput.value = scenario.src.shape.join(',');
+      srcStrideInput.value = scenario.src.stride.join(',');
+      dstShapeInput.value = scenario.dst.shape.join(',');
+      dstStrideInput.value = scenario.dst.stride.join(',');
+      setText(description, scenario.description);
       render();
     });
 
+    [srcShapeInput, srcStrideInput, dstShapeInput, dstStrideInput].forEach(function (input) {
+      input.addEventListener('input', function () {
+        presetSelect.value = 'custom';
+        setText(description, 'Custom source and destination layouts.');
+        render();
+      });
+    });
+
+    srcShapeInput.value = COPY_SCENARIOS[0].src.shape.join(',');
+    srcStrideInput.value = COPY_SCENARIOS[0].src.stride.join(',');
+    dstShapeInput.value = COPY_SCENARIOS[0].dst.shape.join(',');
+    dstStrideInput.value = COPY_SCENARIOS[0].dst.stride.join(',');
+    presetSelect.value = '0';
+    setText(description, COPY_SCENARIOS[0].description);
     render();
   }
 
@@ -1395,6 +1555,7 @@
     renderGcdOriginalGraph: renderGcdOriginalGraph,
     renderGcdAlignment: renderGcdAlignment,
     renderGcdGraphs: renderGcdGraphs,
+    analyzeCopy: analyzeCopy,
     COPY_SCENARIOS: COPY_SCENARIOS
   };
 

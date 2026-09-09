@@ -8,8 +8,8 @@
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
   <title>CuTe Layout Lab</title>
-  <link rel="stylesheet" href="styles.css?v=20260909-2">
-  <script src="app.js?v=20260909-2" defer></script>
+  <link rel="stylesheet" href="styles.css?v=20260909-3">
+  <script src="app.js?v=20260909-3" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -219,24 +219,50 @@
     <section class="section" id="copy">
       <div class="section-head">
         <p class="eyebrow">04 · Algorithm pipeline</p>
-        <h2>COPY turns one loop into four layout stages.</h2>
+        <h2>COPY turns one loop into a sequence of layout stages.</h2>
         <p>
-          Pick a source/destination pair and step through the pipeline. The
+          Edit the source and destination layouts, or start from a preset. The
           colored cells are logical indices: matching colors mean the same
-          element. The stages reshape the domain, remove duplicate writes, and
-          align the loop to destination memory order before looking for a
-          contiguous vector.
+          element. Every stage is shown below so you can follow the domain from
+          the reference loop through common-domain partitioning, nullspace
+          elimination, alignment, and vector selection.
         </p>
       </div>
 
       <div class="copy-layout">
         <div class="panel copy-controls">
           <label class="field">
-            <span>Example</span>
-            <select id="copy-scenario" name="copy-scenario"></select>
+            <span>Preset</span>
+            <select id="copy-preset" name="copy-preset"></select>
           </label>
-          <div class="stage-tabs" id="copy-stages" role="group" aria-label="COPY stages"></div>
+
+          <div class="copy-input-grid">
+            <div class="copy-input-group">
+              <h3>Source</h3>
+              <label class="field">
+                <span>Shape</span>
+                <input id="copy-src-shape" name="copy-src-shape" value="8" inputmode="numeric" autocomplete="off">
+              </label>
+              <label class="field">
+                <span>Stride</span>
+                <input id="copy-src-stride" name="copy-src-stride" value="1" inputmode="numeric" autocomplete="off">
+              </label>
+            </div>
+            <div class="copy-input-group">
+              <h3>Destination</h3>
+              <label class="field">
+                <span>Shape</span>
+                <input id="copy-dst-shape" name="copy-dst-shape" value="8" inputmode="numeric" autocomplete="off">
+              </label>
+              <label class="field">
+                <span>Stride</span>
+                <input id="copy-dst-stride" name="copy-dst-stride" value="1" inputmode="numeric" autocomplete="off">
+              </label>
+            </div>
+          </div>
+
           <p class="hint" id="copy-scenario-description"></p>
+          <p class="error" id="copy-error" role="alert"></p>
         </div>
 
         <div class="panel visual-panel copy-visual">
@@ -257,8 +283,8 @@
             </div>
           </div>
 
-          <div class="stage-detail" id="copy-stage-detail" aria-live="polite"></div>
           <div class="metrics" id="copy-metrics"></div>
+          <div class="stage-list" id="copy-stage-list"></div>
         </div>
       </div>
     </section>
@@ -270,9 +296,8 @@
         <p>
           This page is a teaching companion, not a full CuTe implementation.
           The concept and coalesce panels use flat integer layouts; the common
-          domain panel ports the shape-only walk; the COPY panel uses a small
-          set of precomputed examples from PyCuTe so the stage outputs stay
-          faithful.
+          domain panel ports the shape-only walk; the COPY panel uses an
+          in-browser integer-layout analysis to make the stages interactive.
         </p>
         <div class="link-row">
           <a href="https://github.com/NVlabs/CuTe">NVlabs/CuTe</a>

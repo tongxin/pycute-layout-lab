@@ -936,6 +936,28 @@ h3 {
   top: 16px;
 }
 
+.copy-input-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.copy-input-group {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-small);
+  background: var(--panel-soft);
+}
+
+.copy-input-group h3 {
+  margin-bottom: 10px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
 .stage-tabs {
   margin-top: 8px;
 }
@@ -970,24 +992,66 @@ h3 {
   box-shadow: 0 8px 18px rgba(20, 32, 51, 0.22);
 }
 
-.stage-detail {
-  margin-top: 24px;
+.stage-list {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.stage-card {
   padding: 18px;
   border-radius: var(--radius-small);
   background: var(--panel-soft);
   border: 1px solid var(--line);
 }
 
-.stage-detail h3 {
-  margin-bottom: 8px;
+.stage-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
-.stage-detail p {
+.stage-number {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #ffffff;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.stage-card p {
   margin: 8px 0 0;
   color: var(--muted);
 }
 
-.stage-detail .layout-line {
+.stage-visual {
+  margin-top: 14px;
+}
+
+.stage-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.mini-label {
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.stage-note {
+  font-size: 0.88rem;
+}
+
+.layout-line {
   margin-top: 12px;
   padding: 10px 12px;
   border-radius: 10px;
@@ -996,6 +1060,11 @@ h3 {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.84rem;
   overflow-wrap: anywhere;
+}
+
+.layout-line.stage-error {
+  color: var(--danger);
+  border-color: var(--danger);
 }
 
 .metrics {
@@ -1079,6 +1148,11 @@ h3 {
 @media (max-width: 900px) {
   .lab-grid,
   .copy-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .copy-input-grid,
+  .stage-grid-2 {
     grid-template-columns: 1fr;
   }
 
