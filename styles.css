@@ -19,6 +19,7 @@
   --radius: 18px;
   --radius-small: 12px;
   --max-width: 1180px;
+  --layout-block-height: 76px;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -370,7 +371,7 @@ h3 {
   position: relative;
   display: grid;
   place-items: center;
-  min-height: 58px;
+  min-height: var(--layout-block-height);
   border-radius: 10px;
   background: var(--cell-color, var(--panel-soft));
   color: #09111f;
@@ -473,7 +474,7 @@ h3 {
   position: relative;
   flex: 1 0 56px;
   min-width: 56px;
-  min-height: 66px;
+  min-height: var(--layout-block-height);
   display: grid;
   align-content: center;
   gap: 2px;
@@ -536,6 +537,7 @@ h3 {
 .memory-gap {
   flex: var(--gap-flex, 1) 0 48px;
   min-width: 48px;
+  min-height: var(--layout-block-height);
   display: grid;
   place-items: center;
   align-content: center;
@@ -571,6 +573,9 @@ h3 {
 .mode-block {
   flex: var(--flex, 1) 1 72px;
   min-width: 72px;
+  min-height: var(--layout-block-height);
+  display: grid;
+  align-content: center;
   padding: 12px 10px;
   border-radius: 10px;
   background: var(--mode-color, var(--panel-soft));
@@ -620,8 +625,10 @@ h3 {
 
 .factor-chip {
   display: grid;
+  align-content: center;
   gap: 1px;
   min-width: 58px;
+  min-height: var(--layout-block-height);
   padding: 8px 10px;
   border-radius: 10px;
   background: var(--mode-color, var(--panel-soft));
@@ -675,7 +682,7 @@ h3 {
 .domain-block {
   flex: var(--domain-flex, 1) 1 64px;
   min-width: 64px;
-  min-height: 64px;
+  min-height: var(--layout-block-height);
   display: grid;
   align-content: center;
   gap: 2px;
@@ -715,7 +722,7 @@ h3 {
 .factorized-cell {
   flex: 1 0 76px;
   min-width: 76px;
-  min-height: 72px;
+  min-height: var(--layout-block-height);
 }
 
 .factorized-cell.is-empty {
@@ -781,7 +788,7 @@ h3 {
 .subdomain,
 .gcd-factor-box,
 .factor-empty {
-  min-height: 72px;
+  min-height: var(--layout-block-height);
   display: grid;
   align-content: center;
   gap: 2px;
@@ -942,7 +949,7 @@ h3 {
 .sequence-cell {
   flex: 1 1 38px;
   min-width: 38px;
-  min-height: 50px;
+  min-height: var(--layout-block-height);
   display: grid;
   place-items: center;
   padding: 6px 4px;
@@ -1025,7 +1032,7 @@ h3 {
 .vector-cell {
   flex: 1 1 44px;
   min-width: 44px;
-  min-height: 46px;
+  min-height: var(--layout-block-height);
   display: grid;
   place-items: center;
   border-radius: 9px;
@@ -1100,10 +1107,6 @@ h3 {
 
   .copy-strips {
     grid-template-columns: 1fr;
-  }
-
-  .layout-cell {
-    min-height: 50px;
   }
 
   .sequence-cell {

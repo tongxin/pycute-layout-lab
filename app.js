@@ -834,9 +834,9 @@
     }
 
     var shared = subdomain.factorIndex !== null;
-    var tag = shared ? '↔ G' + subdomain.factorIndex : 'unshared';
+    var tag = shared ? 'G' + subdomain.factorIndex : '—';
     var partLabel = subdomain.partCount > 1
-      ? 'part ' + (subdomain.partIndex + 1) + '/' + subdomain.partCount
+      ? '.' + (subdomain.partIndex + 1)
       : '';
     var color = shared
       ? colorForIndex(subdomain.factorIndex, Math.max(1, factorCount))
@@ -847,8 +847,7 @@
       (shared ? 'is-shared' : 'is-unshared') +
       '" style="--subdomain-color:' + color + '">' +
       '<div class="subdomain-meta"><span>' + side + subdomain.leafIndex +
-      ' · ' + subdomain.originalSize + '</span>' +
-      (partLabel ? '<span>' + partLabel + '</span>' : '') + '</div>' +
+      partLabel + '</span></div>' +
       '<strong class="subdomain-size">' + subdomain.size + '</strong>' +
       '<span class="subdomain-tag">' + tag + '</span></div>'
     );
@@ -859,8 +858,7 @@
       '<div class="gcd-factor-box factorized-cell is-factor is-shared" style="--factor-color:' +
       colorForIndex(factorIndex, Math.max(1, factorCount)) + '">' +
       '<span class="factor-meta">G' + factorIndex + '</span>' +
-      '<strong class="factor-size">' + size + '</strong>' +
-      '<span class="factor-tag">shared factor</span></div>'
+      '<strong class="factor-size">' + size + '</strong></div>'
     );
   }
 
@@ -918,8 +916,8 @@
 
     container.innerHTML =
       factorizedRowMarkup('A', aCells || emptyMarkup()) +
-      factorizedRowMarkup('G', gCells || emptyMarkup()) +
-      factorizedRowMarkup('B', bCells || emptyMarkup());
+      factorizedRowMarkup('B', bCells || emptyMarkup()) +
+      factorizedRowMarkup('G', gCells || emptyMarkup());
 
     return alignment;
   }
@@ -985,7 +983,7 @@
         '<strong>G = ' + resultText + '</strong><br>' +
         'size(G) = ' + sizeG + ' · gcd(|A|, |B|) = ' + sharedSize +
         ' · ' + coverage + '% of the shared size.<br>' +
-        'Rows are layouts; columns are factorized subdomains. Shared columns align vertically through A, G, and B.<br>' +
+        'Rows are layouts; columns are factorized subdomains. Shared columns align vertically through A, B, and G.<br>' +
         (sizeG === sizeA && sizeG === sizeB
           ? 'The whole domain is compatible.'
           : sizeG === 1
