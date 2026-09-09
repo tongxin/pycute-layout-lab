@@ -438,6 +438,132 @@ h3 {
   opacity: 0.84;
 }
 
+.memory-view {
+  margin-top: 4px;
+}
+
+.memory-scale {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.memory-track {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  padding: 10px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 14px;
+  background:
+    linear-gradient(180deg, var(--panel-soft), transparent),
+    repeating-linear-gradient(
+      90deg,
+      transparent 0 23px,
+      var(--line) 23px 24px
+    );
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.memory-slot {
+  position: relative;
+  flex: 1 0 56px;
+  min-width: 56px;
+  min-height: 66px;
+  display: grid;
+  align-content: center;
+  gap: 2px;
+  padding: 8px 7px;
+  border-radius: 10px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  color: #09111f;
+  text-align: center;
+  transition: transform 160ms ease, box-shadow 160ms ease;
+}
+
+.memory-slot.is-occupied {
+  background: var(--cell-color, var(--panel-soft));
+}
+
+.memory-slot.is-empty {
+  flex: 1 0 34px;
+  min-width: 34px;
+  background: transparent;
+  border-style: dashed;
+  color: var(--muted);
+}
+
+.memory-slot.is-active {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(20, 32, 51, 0.22);
+}
+
+.memory-address {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 800;
+  opacity: 0.8;
+}
+
+.memory-slot.is-empty .memory-address {
+  font-size: 0.68rem;
+  opacity: 0.42;
+}
+
+.memory-coords {
+  display: block;
+  font-size: 0.68rem;
+  line-height: 1.25;
+  opacity: 0.86;
+  overflow-wrap: anywhere;
+}
+
+.memory-count {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.14);
+  padding: 1px 5px;
+  font-size: 0.62rem;
+  font-weight: 800;
+}
+
+.memory-gap {
+  flex: var(--gap-flex, 1) 0 48px;
+  min-width: 48px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 1px;
+  padding: 7px 5px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 10px;
+  background: repeating-linear-gradient(
+    135deg,
+    var(--panel-soft) 0 6px,
+    transparent 6px 12px
+  );
+  color: var(--muted);
+  text-align: center;
+  font-size: 0.68rem;
+}
+
+.memory-gap strong {
+  color: var(--ink);
+  font-size: 0.78rem;
+}
+
+.gap-mark {
+  font-size: 1rem;
+  line-height: 1;
+  opacity: 0.55;
+}
+
 .mode-strip {
   align-items: stretch;
 }
@@ -698,6 +824,28 @@ h3 {
   .sequence-cell {
     flex-basis: 34px;
     min-width: 34px;
+  }
+
+  .memory-scale {
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .memory-track {
+    gap: 4px;
+    padding: 8px;
+  }
+
+  .memory-slot {
+    min-width: 56px;
+  }
+
+  .memory-slot.is-empty {
+    min-width: 36px;
+  }
+
+  .memory-gap {
+    min-width: 46px;
   }
 }
 

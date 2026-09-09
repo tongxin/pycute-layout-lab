@@ -337,7 +337,7 @@
       Array.prototype.forEach.call(grid.querySelectorAll('.layout-cell'), function (cell) {
         cell.classList.remove('is-active');
       });
-      Array.prototype.forEach.call(memory.querySelectorAll('.memory-block'), function (block) {
+      Array.prototype.forEach.call(memory.querySelectorAll('.memory-slot'), function (block) {
         block.classList.remove('is-active');
       });
     }
@@ -347,7 +347,7 @@
       Array.prototype.forEach.call(grid.querySelectorAll('[data-offset="' + offset + '"]'), function (cell) {
         cell.classList.add('is-active');
       });
-      Array.prototype.forEach.call(memory.querySelectorAll('[data-offset="' + offset + '"]'), function (block) {
+      Array.prototype.forEach.call(memory.querySelectorAll('.memory-slot[data-offset="' + offset + '"]'), function (block) {
         block.classList.add('is-active');
       });
       if (readout) {
@@ -395,16 +395,66 @@
         byOffset.get(offset).push('(' + coordinate.join(',') + ')');
       });
 
-      memory.innerHTML = Array.from(byOffset.keys()).sort(function (a, b) {
+      var sortedOffsets = Array.from(byOffset.keys()).sort(function (a, b) {
         return a - b;
-      }).map(function (offset) {
+      });
+      var compressGaps = maxOffset > 15;
+      var memoryParts = [];
+
+      function occupiedMarkup(offset) {
+        var coordinateList = byOffset.get(offset);
+        var count = coordinateList.length > 1
+          ? '<span class="memory-count">×' + coordinateList.length + '</span>'
+          : '';
         return (
-          '<div class="memory-block" data-offset="' + offset + '" style="--cell-color:' +
-          colorForValue(offset, minOffset, maxOffset) + '">' +
-          '<strong>#' + offset + '</strong><span>' +
-          byOffset.get(offset).join(' · ') + '</span></div>'
+          '<div class="memory-slot is-occupied" data-offset="' + offset +
+          '" style="--cell-color:' + colorForValue(offset, minOffset, maxOffset) + '">' +
+          '<span class="memory-address">@' + offset + '</span>' +
+          '<span class="memory-coords">' + coordinateList.join(' · ') + '</span>' +
+          count + '</div>'
         );
-      }).join('');
+      }
+
+      function gapMarkup(gap, from, to) {
+        var gapFlex = Math.min(4.5, 0.8 + Math.log2(gap + 1));
+        var label = gap === 1 ? '+1' : '+' + gap;
+        return (
+          '<div class="memory-gap" style="--gap-flex:' + gapFlex.toFixed(2) +
+          '" title="' + gap + ' skipped address' + (gap === 1 ? '' : 'es') +
+          ' between ' + from + ' and ' + to + '">' +
+          '<span class="gap-mark" aria-hidden="true">⋯</span>' +
+          '<strong>' + label + '</strong><span>skipped</span></div>'
+        );
+      }
+
+      if (!compressGaps) {
+        for (var offset = 0; offset <= maxOffset; offset += 1) {
+          if (byOffset.has(offset)) {
+            memoryParts.push(occupiedMarkup(offset));
+          } else {
+            memoryParts.push(
+              '<div class="memory-slot is-empty" data-offset="' + offset + '">' +
+              '<span class="memory-address">@' + offset + '</span></div>'
+            );
+          }
+        }
+      } else {
+        var cursor = 0;
+        sortedOffsets.forEach(function (offset) {
+          if (offset > cursor) {
+            memoryParts.push(gapMarkup(offset - cursor, cursor, offset - 1));
+          }
+          memoryParts.push(occupiedMarkup(offset));
+          cursor = offset + 1;
+        });
+      }
+
+      memory.innerHTML =
+        '<div class="memory-scale"><span>' +
+        (compressGaps ? 'compressed gaps' : 'linear scale') +
+        '</span><span>offsets ' + minOffset + '…' + maxOffset + '</span></div>' +
+        '<div class="memory-track' + (compressGaps ? ' is-compressed' : '') + '">' +
+        memoryParts.join('') + '</div>';
 
       Array.prototype.forEach.call(grid.querySelectorAll('.layout-cell'), function (cell) {
         var offset = Number(cell.getAttribute('data-offset'));
@@ -420,9 +470,12 @@
       setText(sizeBadge, 'size ' + sizeOf(shape));
       setText(maxBadge, 'max #' + maxOffset);
       if (readout) {
+        var scaleNote = compressGaps
+          ? 'Large gaps are compressed in the memory track.'
+          : 'Every address from 0 to ' + maxOffset + ' is shown.';
         readout.textContent =
           'offset(i,j) = i·' + stride[0] + ' + j·' + stride[1] +
-          '. Hover a logical cell to trace it into memory.';
+          '. ' + scaleNote + ' Hover a logical cell to trace it into memory.';
       }
     }
 
