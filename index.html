@@ -159,11 +159,11 @@
         <h2>Greatest common domain finds the aligned common shape.</h2>
         <p>
           The result depends only on the shapes. Its returned strides are the
-          offsets where those shared factors align. Below, each original leaf is
-          split into subdomains: shared subdomains line up with a GCD factor,
-          while unshared subdomains dangle in their own row. Try changing the
-          order of A's modes: the tensor is unchanged up to an index swap, but
-          the common domain can become much larger.
+          offsets where those shared factors align. The original layouts are
+          shown as rows; the factorized graph keeps A, G, and B as rows and
+          aligns shared subdomains in vertical columns. Try changing the order
+          of A's modes: the tensor is unchanged up to an index swap, but the
+          common domain can become much larger.
         </p>
       </div>
 
@@ -194,16 +194,18 @@
         <div class="panel visual-panel">
           <div class="gcd-graph-block">
             <div class="visual-header">
-              <h3>Factorized domain alignment</h3>
+              <h3>Original layouts</h3>
+              <span class="badge" id="gcd-original-badge">A and B rows</span>
+            </div>
+            <div class="domain-graph" id="gcd-original-graph"></div>
+          </div>
+          <div class="gcd-graph-block">
+            <div class="visual-header memory-header">
+              <h3>Factorized alignment</h3>
               <span class="badge" id="gcd-factor-badge">shared factors</span>
             </div>
-            <div class="factor-align-scroll">
-              <div class="factor-align-head" aria-hidden="true">
-                <span>A original</span>
-                <span>GCD factor</span>
-                <span>B original</span>
-              </div>
-              <div class="factor-align" id="gcd-factor-align"></div>
+            <div class="factorized-scroll">
+              <div class="factorized-grid" id="gcd-factor-align"></div>
             </div>
           </div>
           <div class="callout" id="gcd-summary" aria-live="polite"></div>

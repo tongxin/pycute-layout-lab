@@ -807,9 +807,30 @@
     };
   }
 
+  function domainRowMarkup(label, shape) {
+    var blocks = shape.map(function (size, index) {
+      var color = colorForIndex(index, Math.max(1, shape.length));
+      return (
+        '<div class="domain-block" style="--domain-color:' + color +
+        '; --domain-flex:' + size + '">' +
+        '<span class="domain-meta">' + label + index + '</span>' +
+        '<strong class="domain-size">' + size + '</strong></div>'
+      );
+    }).join('');
+    return (
+      '<div class="domain-row">' +
+      '<span class="domain-row-label">' + label + '</span>' +
+      '<div class="domain-blocks">' + blocks + '</div></div>'
+    );
+  }
+
+  function renderGcdOriginalGraph(container, shapeA, shapeB) {
+    container.innerHTML = domainRowMarkup('A', shapeA) + domainRowMarkup('B', shapeB);
+  }
+
   function subdomainMarkup(subdomain, side, factorCount) {
     if (!subdomain) {
-      return '<div class="factor-empty"><span>spans leaves</span></div>';
+      return '<div class="factorized-cell is-empty"><span>spans leaves</span></div>';
     }
 
     var shared = subdomain.factorIndex !== null;
@@ -822,7 +843,8 @@
       : 'var(--panel-soft)';
 
     return (
-      '<div class="subdomain ' + (shared ? 'is-shared' : 'is-unshared') +
+      '<div class="subdomain factorized-cell ' +
+      (shared ? 'is-shared' : 'is-unshared') +
       '" style="--subdomain-color:' + color + '">' +
       '<div class="subdomain-meta"><span>' + side + subdomain.leafIndex +
       ' · ' + subdomain.originalSize + '</span>' +
@@ -834,7 +856,7 @@
 
   function factorMarkup(factorIndex, size, factorCount) {
     return (
-      '<div class="gcd-factor-box" style="--factor-color:' +
+      '<div class="gcd-factor-box factorized-cell is-factor is-shared" style="--factor-color:' +
       colorForIndex(factorIndex, Math.max(1, factorCount)) + '">' +
       '<span class="factor-meta">G' + factorIndex + '</span>' +
       '<strong class="factor-size">' + size + '</strong>' +
@@ -844,53 +866,80 @@
 
   function emptyMarkup(label) {
     return (
-      '<div class="factor-empty">' +
+      '<div class="factorized-cell is-empty">' +
       (label ? '<span>' + label + '</span>' : '') +
       '</div>'
+    );
+  }
+
+  function factorizedRowMarkup(label, cells) {
+    return (
+      '<div class="factorized-row">' +
+      '<span class="factorized-row-label">' + label + '</span>' +
+      '<div class="factorized-cells">' + cells + '</div></div>'
     );
   }
 
   function renderGcdAlignment(container, shapeA, shapeB, result) {
     var alignment = buildGcdAlignmentRows(shapeA, shapeB, result);
     var factorCount = Math.max(1, result.shape.length);
-
-    container.innerHTML = alignment.rows.map(function (row) {
+    var columns = alignment.rows.map(function (row) {
       if (row.type === 'shared') {
-        return (
-          '<div class="factor-align-row is-shared">' +
-          subdomainMarkup(row.a, 'A', factorCount) +
-          factorMarkup(row.factorIndex, row.size, factorCount) +
-          subdomainMarkup(row.b, 'B', factorCount) +
-          '</div>'
-        );
+        return {
+          shared: true,
+          a: row.a,
+          b: row.b,
+          factor: row
+        };
       }
+      return {
+        shared: false,
+        a: row.side === 'A' ? row.sub : null,
+        b: row.side === 'B' ? row.sub : null,
+        factor: null
+      };
+    });
 
-      var left = row.side === 'A'
-        ? subdomainMarkup(row.sub, 'A', factorCount)
-        : emptyMarkup('');
-      var right = row.side === 'B'
-        ? subdomainMarkup(row.sub, 'B', factorCount)
-        : emptyMarkup('');
-
-      return (
-        '<div class="factor-align-row is-unshared">' +
-        left + emptyMarkup('') + right +
-        '</div>'
-      );
+    var aCells = columns.map(function (column) {
+      return column.a
+        ? subdomainMarkup(column.a, 'A', factorCount)
+        : emptyMarkup(column.shared ? 'spans leaves' : '');
+    }).join('');
+    var gCells = columns.map(function (column) {
+      return column.factor
+        ? factorMarkup(column.factor.factorIndex, column.factor.size, factorCount)
+        : emptyMarkup();
+    }).join('');
+    var bCells = columns.map(function (column) {
+      return column.b
+        ? subdomainMarkup(column.b, 'B', factorCount)
+        : emptyMarkup(column.shared ? 'spans leaves' : '');
     }).join('');
 
+    container.innerHTML =
+      factorizedRowMarkup('A', aCells || emptyMarkup()) +
+      factorizedRowMarkup('G', gCells || emptyMarkup()) +
+      factorizedRowMarkup('B', bCells || emptyMarkup());
+
     return alignment;
+  }
+
+  function renderGcdGraphs(originalContainer, factorContainer, shapeA, shapeB, result) {
+    renderGcdOriginalGraph(originalContainer, shapeA, shapeB);
+    return renderGcdAlignment(factorContainer, shapeA, shapeB, result);
   }
 
   function initGcd() {
     var inputA = document.getElementById('gcd-a');
     var inputB = document.getElementById('gcd-b');
     var error = document.getElementById('gcd-error');
+    var originalGraph = document.getElementById('gcd-original-graph');
     var factorAlign = document.getElementById('gcd-factor-align');
+    var originalBadge = document.getElementById('gcd-original-badge');
     var factorBadge = document.getElementById('gcd-factor-badge');
     var summary = document.getElementById('gcd-summary');
 
-    if (!inputA || !inputB || !factorAlign) {
+    if (!inputA || !inputB || !originalGraph || !factorAlign) {
       return;
     }
 
@@ -922,7 +971,8 @@
       var sharedSize = gcd(sizeA, sizeB);
       var coverage = sharedSize ? Math.round((sizeG / sharedSize) * 100) : 0;
 
-      var alignment = renderGcdAlignment(factorAlign, shapeA, shapeB, result);
+      var alignment = renderGcdGraphs(originalGraph, factorAlign, shapeA, shapeB, result);
+      setText(originalBadge, '|A| = ' + sizeA + ' · |B| = ' + sizeB);
       setText(
         factorBadge,
         alignment.trivial
@@ -935,7 +985,7 @@
         '<strong>G = ' + resultText + '</strong><br>' +
         'size(G) = ' + sizeG + ' · gcd(|A|, |B|) = ' + sharedSize +
         ' · ' + coverage + '% of the shared size.<br>' +
-        'Shared subdomains align horizontally; unshared subdomains dangle in their own row.<br>' +
+        'Rows are layouts; columns are factorized subdomains. Shared columns align vertically through A, G, and B.<br>' +
         (sizeG === sizeA && sizeG === sizeB
           ? 'The whole domain is compatible.'
           : sizeG === 1
@@ -1344,7 +1394,9 @@
     greatestCommonDomain: greatestCommonDomain,
     layoutOffsets: layoutOffsets,
     buildGcdAlignmentRows: buildGcdAlignmentRows,
+    renderGcdOriginalGraph: renderGcdOriginalGraph,
     renderGcdAlignment: renderGcdAlignment,
+    renderGcdGraphs: renderGcdGraphs,
     COPY_SCENARIOS: COPY_SCENARIOS
   };
 
