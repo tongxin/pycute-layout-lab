@@ -639,6 +639,76 @@ h3 {
   opacity: 0.82;
 }
 
+.gcd-graph-block {
+  margin-bottom: 18px;
+}
+
+.gcd-graph {
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.gcd-graph svg {
+  display: block;
+  width: 100%;
+  min-width: 560px;
+  height: auto;
+}
+
+.gcd-guide {
+  stroke: var(--line-strong);
+  stroke-width: 1;
+  stroke-dasharray: 4 5;
+  opacity: 0.55;
+}
+
+.gcd-row-label {
+  fill: var(--muted);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.gcd-leaf,
+.gcd-factor {
+  stroke: rgba(0, 0, 0, 0.14);
+  stroke-width: 1;
+}
+
+.gcd-leaf-size,
+.gcd-factor-size {
+  fill: #09111f;
+  font-size: 14px;
+  font-weight: 700;
+  text-anchor: middle;
+  dominant-baseline: middle;
+}
+
+.gcd-leaf-note,
+.gcd-factor-note {
+  fill: #09111f;
+  font-size: 10.5px;
+  text-anchor: middle;
+  opacity: 0.78;
+}
+
+.gcd-factor-track {
+  fill: var(--panel-soft);
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.gcd-axis,
+.gcd-axis-tick {
+  stroke: var(--line-strong);
+  stroke-width: 1;
+}
+
+.gcd-tick-label {
+  fill: var(--muted);
+  font-size: 11px;
+  text-anchor: middle;
+}
+
 .copy-controls {
   position: sticky;
   top: 16px;

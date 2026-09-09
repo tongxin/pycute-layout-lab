@@ -610,16 +610,186 @@
     equal: { a: [16, 3], b: [16, 3] }
   };
 
+  function uniqueSorted(values) {
+    return values.filter(function (value, index, array) {
+      return array.indexOf(value) === index;
+    }).sort(function (a, b) {
+      return a - b;
+    });
+  }
+
+  function gcdGraphGeometry(shapeA, shapeB, result) {
+    var sizeA = sizeOf(shapeA);
+    var sizeB = sizeOf(shapeB);
+    var factorEnds = result.shape.map(function (value, index) {
+      return result.stride[index] + value;
+    });
+    var maxExtent = Math.max.apply(null, [sizeA, sizeB, 1].concat(factorEnds));
+    var width = 760;
+    var left = 54;
+    var right = 18;
+    var plotWidth = width - left - right;
+
+    return {
+      width: width,
+      left: left,
+      right: right,
+      plotWidth: plotWidth,
+      maxExtent: maxExtent,
+      sizeA: sizeA,
+      sizeB: sizeB,
+      x: function (value) {
+        return left + (value / maxExtent) * plotWidth;
+      }
+    };
+  }
+
+  function gcdGuideMarkup(geometry, result, height) {
+    var guides = [];
+    result.shape.forEach(function (value, index) {
+      guides.push(result.stride[index]);
+      guides.push(result.stride[index] + value);
+    });
+    return uniqueSorted(guides).map(function (value) {
+      var x = geometry.x(value);
+      return (
+        '<line class="gcd-guide" x1="' + x + '" x2="' + x +
+        '" y1="0" y2="' + height + '"></line>'
+      );
+    }).join('');
+  }
+
+  function renderGcdOriginalGraph(container, shapeA, shapeB, result) {
+    var geometry = gcdGraphGeometry(shapeA, shapeB, result);
+    var rowHeight = 42;
+    var rowGap = 22;
+    var top = 28;
+    var bottom = 16;
+    var height = top + rowHeight * 2 + rowGap + bottom;
+    var parts = [
+      '<svg viewBox="0 0 ' + geometry.width + ' ' + height +
+      '" role="img" aria-label="Original A and B domain leaves">'
+    ];
+
+    function leafRow(y, label, shape) {
+      var start = 0;
+      var row = [
+        '<text class="gcd-row-label" x="14" y="' + (y + rowHeight / 2 + 5) + '">' +
+        label + '</text>'
+      ];
+      shape.forEach(function (size, index) {
+        var end = start + size;
+        var x = geometry.x(start);
+        var width = Math.max(2, geometry.x(end) - x);
+        var color = colorForIndex(index, Math.max(1, shape.length));
+        row.push(
+          '<g><title>' + label + ' leaf ' + index + ': size ' + size + '</title>' +
+          '<rect class="gcd-leaf" x="' + x + '" y="' + y + '" width="' + width +
+          '" height="' + rowHeight + '" rx="9" fill="' + color + '"></rect>' +
+          '<text class="gcd-leaf-size" x="' + (x + width / 2) + '" y="' +
+          (y + rowHeight / 2 - 2) + '">' + size + '</text>'
+        );
+        if (width > 54) {
+          row.push(
+            '<text class="gcd-leaf-note" x="' + (x + width / 2) + '" y="' +
+            (y + rowHeight / 2 + 14) + '">leaf ' + index + '</text>'
+          );
+        }
+        row.push('</g>');
+        start = end;
+      });
+      return row.join('');
+    }
+
+    parts.push(leafRow(top, 'A', shapeA));
+    parts.push(leafRow(top + rowHeight + rowGap, 'B', shapeB));
+    parts.push(gcdGuideMarkup(geometry, result, height));
+    parts.push('</svg>');
+    container.innerHTML = parts.join('');
+    return geometry;
+  }
+
+  function renderGcdFactorGraph(container, result, geometry) {
+    var rowHeight = 46;
+    var top = 26;
+    var bottom = 44;
+    var height = top + rowHeight + bottom;
+    var axisY = top + rowHeight + 14;
+    var parts = [
+      '<svg viewBox="0 0 ' + geometry.width + ' ' + height +
+      '" role="img" aria-label="Greatest common domain factor leaves">',
+      '<rect class="gcd-factor-track" x="' + geometry.x(0) + '" y="' + top +
+      '" width="' + (geometry.x(geometry.maxExtent) - geometry.x(0)) +
+      '" height="' + rowHeight + '" rx="10"></rect>',
+      '<text class="gcd-row-label" x="14" y="' + (top + rowHeight / 2 + 5) + '">G</text>'
+    ];
+
+    result.shape.forEach(function (size, index) {
+      var start = result.stride[index];
+      var end = start + size;
+      var x = geometry.x(start);
+      var width = Math.max(2, geometry.x(end) - x);
+      var color = colorForValue(start, 0, geometry.maxExtent);
+      parts.push(
+        '<g><title>GCD factor ' + index + ': size ' + size +
+        ' at offset ' + start + '</title>' +
+        '<rect class="gcd-factor" x="' + x + '" y="' + top + '" width="' + width +
+        '" height="' + rowHeight + '" rx="9" fill="' + color + '"></rect>' +
+        '<text class="gcd-factor-size" x="' + (x + width / 2) + '" y="' +
+        (top + rowHeight / 2 - 2) + '">' + size + '</text>'
+      );
+      if (width > 46) {
+        parts.push(
+          '<text class="gcd-factor-note" x="' + (x + width / 2) + '" y="' +
+          (top + rowHeight / 2 + 14) + '">@' + start + '</text>'
+        );
+      }
+      parts.push('</g>');
+    });
+
+    parts.push(gcdGuideMarkup(geometry, result, height));
+
+    var ticks = uniqueSorted(
+      [0, geometry.maxExtent]
+        .concat(result.stride)
+        .concat(result.shape.map(function (value, index) {
+          return result.stride[index] + value;
+        }))
+    );
+    parts.push(
+      '<line class="gcd-axis" x1="' + geometry.x(0) + '" y1="' + axisY +
+      '" x2="' + geometry.x(geometry.maxExtent) + '" y2="' + axisY + '"></line>'
+    );
+    ticks.forEach(function (value) {
+      var x = geometry.x(value);
+      parts.push(
+        '<line class="gcd-axis-tick" x1="' + x + '" y1="' + (axisY - 4) +
+        '" x2="' + x + '" y2="' + (axisY + 4) + '"></line>' +
+        '<text class="gcd-tick-label" x="' + x + '" y="' + (axisY + 18) + '">' +
+        value + '</text>'
+      );
+    });
+
+    parts.push('</svg>');
+    container.innerHTML = parts.join('');
+  }
+
+  function renderGcdGraphs(originalContainer, factorContainer, shapeA, shapeB, result) {
+    var geometry = renderGcdOriginalGraph(originalContainer, shapeA, shapeB, result);
+    renderGcdFactorGraph(factorContainer, result, geometry);
+  }
+
   function initGcd() {
     var inputA = document.getElementById('gcd-a');
     var inputB = document.getElementById('gcd-b');
     var error = document.getElementById('gcd-error');
-    var factorsA = document.getElementById('gcd-a-factors');
-    var factorsB = document.getElementById('gcd-b-factors');
-    var factorsResult = document.getElementById('gcd-result-factors');
+    var originalGraph = document.getElementById('gcd-original-graph');
+    var factorGraph = document.getElementById('gcd-factor-graph');
+    var originalBadge = document.getElementById('gcd-original-badge');
+    var factorBadge = document.getElementById('gcd-factor-badge');
     var summary = document.getElementById('gcd-summary');
 
-    if (!inputA || !inputB || !factorsA || !factorsB || !factorsResult) {
+    if (!inputA || !inputB || !originalGraph || !factorGraph) {
       return;
     }
 
@@ -631,23 +801,6 @@
         return 'Every shape entry must be a positive integer.';
       }
       return '';
-    }
-
-    function factorChips(shape, options) {
-      var config = options || {};
-      var maxStride = config.strides ? Math.max.apply(null, config.strides.concat([1])) : 1;
-      return shape.map(function (value, index) {
-        var stride = config.strides ? config.strides[index] : null;
-        var color = stride === null
-          ? colorForIndex(index, Math.max(1, shape.length))
-          : colorForValue(stride, 0, maxStride);
-        return (
-          '<div class="factor-chip" style="--mode-color:' + color + '">' +
-          '<strong>' + value + '</strong>' +
-          (stride === null ? '<span>factor</span>' : '<span>@' + stride + '</span>') +
-          '</div>'
-        );
-      }).join('');
     }
 
     function render() {
@@ -668,15 +821,19 @@
       var sharedSize = gcd(sizeA, sizeB);
       var coverage = sharedSize ? Math.round((sizeG / sharedSize) * 100) : 0;
 
-      factorsA.innerHTML = factorChips(shapeA);
-      factorsB.innerHTML = factorChips(shapeB);
-      factorsResult.innerHTML = factorChips(result.shape, { strides: result.stride });
+      renderGcdGraphs(originalGraph, factorGraph, shapeA, shapeB, result);
+      setText(originalBadge, '|A| = ' + sizeA + ' · |B| = ' + sizeB);
+      setText(
+        factorBadge,
+        result.shape.length + (result.shape.length === 1 ? ' shared factor' : ' shared factors')
+      );
 
       var resultText = formatLayout(result.shape, result.stride);
       summary.innerHTML =
         '<strong>G = ' + resultText + '</strong><br>' +
         'size(G) = ' + sizeG + ' · gcd(|A|, |B|) = ' + sharedSize +
         ' · ' + coverage + '% of the shared size.<br>' +
+        'Dashed guides show where each factor lands in both original domains.<br>' +
         (sizeG === sizeA && sizeG === sizeB
           ? 'The whole domain is compatible.'
           : sizeG === 1
@@ -1084,6 +1241,9 @@
     coalesceLayout: coalesceLayout,
     greatestCommonDomain: greatestCommonDomain,
     layoutOffsets: layoutOffsets,
+    gcdGraphGeometry: gcdGraphGeometry,
+    renderGcdOriginalGraph: renderGcdOriginalGraph,
+    renderGcdFactorGraph: renderGcdFactorGraph,
     COPY_SCENARIOS: COPY_SCENARIOS
   };
 

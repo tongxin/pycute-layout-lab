@@ -190,17 +190,19 @@
         </form>
 
         <div class="panel visual-panel">
-          <div class="factor-row">
-            <span class="factor-label">A</span>
-            <div class="factor-strip" id="gcd-a-factors"></div>
+          <div class="gcd-graph-block">
+            <div class="visual-header">
+              <h3>Original domains</h3>
+              <span class="badge" id="gcd-original-badge">A and B leaf extents</span>
+            </div>
+            <div class="gcd-graph" id="gcd-original-graph"></div>
           </div>
-          <div class="factor-row">
-            <span class="factor-label">B</span>
-            <div class="factor-strip" id="gcd-b-factors"></div>
-          </div>
-          <div class="factor-row result-factor-row">
-            <span class="factor-label">G</span>
-            <div class="factor-strip" id="gcd-result-factors"></div>
+          <div class="gcd-graph-block">
+            <div class="visual-header memory-header">
+              <h3>GCD factorization</h3>
+              <span class="badge" id="gcd-factor-badge">shared factors at offsets</span>
+            </div>
+            <div class="gcd-graph" id="gcd-factor-graph"></div>
           </div>
           <div class="callout" id="gcd-summary" aria-live="polite"></div>
         </div>
